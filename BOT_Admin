@@ -1,0 +1,56 @@
+import discord
+from discord.ext import commands
+import asyncio
+
+intents = discord.Intents.default()
+intents.voice_states = True
+intents.members = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Dictionary to track webcam activation times
+webcam_users = {}
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Check if user started streaming video (webcam)
+    if not before.self_video and after.self_video:
+        print(f'{member} started webcam at {discord.utils.utcnow()}')
+        webcam_users[member.id] = discord.utils.utcnow()
+    
+    # Check if user stopped streaming video
+    elif before.self_video and not after.self_video:
+        if member.id in webcam_users:
+            print(f'{member} stopped webcam at {discord.utils.utcnow()}')
+            del webcam_users[member.id]
+    
+    # Check active webcam users for duration
+    current_time = discord.utils.utcnow()
+    to_remove = []
+    
+    for user_id, start_time in webcam_users.items():
+        duration = (current_time - start_time).total_seconds()
+        if duration > 2:  # 2 seconds limit
+            user = member.guild.get_member(user_id)
+            if user:
+                try:
+                    # Kick the user with reason
+                    await user.kick(reason="You do not have permission to use the webcam")
+                    print(f'Kicked {user} for webcam violation')
+                    to_remove.append(user_id)
+                except discord.Forbidden:
+                    print(f'No permission to kick {user}')
+                except Exception as e:
+                    print(f'Error kicking {user}: {e}')
+    
+    # Clean up kicked users
+    for user_id in to_remove:
+        if user_id in webcam_users:
+            del webcam_users[user_id]
+
+# Replace 'YOUR_BOT_TOKEN' with your actual bot token
+bot.run('YOUR_BOT_TOKEN')
